@@ -647,9 +647,11 @@
                     if (typeof nextNode === 'object') {
                         addSelect(nextNode, level + 1);
                     } else {
-                        // Показываем результат
                         const resultDiv = document.createElement('div');
-                        resultDiv.className = `result ${nextNode.includes('Одобрить') ? 'approve' : 'reject'}`;
+                        const isApprove = currentTree === thesisTree ?
+                            nextNode.includes('Успешная') :
+                            nextNode.includes('Одобрить');
+                        resultDiv.className = `result ${isApprove ? 'approve' : 'reject'}`;
                         resultDiv.innerHTML = `<strong>Результат: ${nextNode}</strong>`;
                         form.appendChild(resultDiv);
                     }
