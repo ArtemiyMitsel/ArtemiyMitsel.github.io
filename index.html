@@ -65,8 +65,9 @@
         }
 
         #treeContainer {
-            min-width: 3000px;
+            min-width: 1600px;
             min-height: 1200px;
+            margin-left: -100px;
             position: relative;
         }
 
@@ -93,25 +94,6 @@
             justify-content: center;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
             transition: all 0.3s ease;
-        }
-
-        .zoom-btn:hover {
-            background: #45a049;
-            transform: translateY(-2px);
-        }
-
-        .zoom-btn:active {
-            transform: translateY(0);
-        }
-
-        .zoom-level {
-            background: white;
-            padding: 5px 10px;
-            border-radius: 15px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            display: flex;
-            align-items: center;
-            font-size: 14px;
         }
 
         .edge-label {
@@ -142,6 +124,28 @@
             z-index: 2;
         }
 
+        .edge {
+            position: absolute;
+            height: 2px;
+            background: #4CAF50;
+            transform-origin: 0 50%;
+            transition: opacity 0.3s ease;
+            z-index: 1;
+        }
+
+        .edge::after {
+            content: '';
+            position: absolute;
+            right: -1px;
+            top: -4px;
+            width: 0;
+            height: 0;
+            border-left: 8px solid #4CAF50;
+            border-top: 5px solid transparent;
+            border-bottom: 5px solid transparent;
+            transform: translateX(1px);
+        }
+
         .field-name {
             font-size: 12px;
             color: #666;
@@ -152,28 +156,6 @@
             font-weight: bold;
             color: #333;
             font-size: 14px;
-        }
-
-        .edge {
-            position: absolute;
-            height: 2px;
-            background: #4CAF50;
-            transform-origin: 0 0;
-            transition: opacity 0.3s ease;
-            z-index: 1;
-        }
-
-        .edge::after {
-            content: '';
-            position: absolute;
-            right: 0;
-            top: -4px;
-            width: 0;
-            height: 0;
-            border-left: 8px solid #4CAF50;
-            border-top: 5px solid transparent;
-            border-bottom: 5px solid transparent;
-            transform: translateX(1px);
         }
 
         select {
@@ -419,7 +401,7 @@
         function calculateNodePositions(tree = currentTree) {
             const nodes = [];
             const edges = [];
-            const containerWidth = Math.max(document.getElementById('treeContainer').offsetWidth, 3000);
+            const containerWidth = Math.max(document.getElementById('treeContainer').offsetWidth, 2000);
             const levelHeight = 200;
             const baseNodeWidth = 200;
 
@@ -446,7 +428,7 @@
 
                 const totalNodesAtLevel = levelWidths[level] || 1;
                 const levelWidth = baseNodeWidth * (totalNodesAtLevel - 1);
-                const startX = (containerWidth - levelWidth) / 2;
+                const startX = 100;
 
                 let x = startX + (currentIndex * baseNodeWidth);
                 let y = 50 + (level * levelHeight);
@@ -528,7 +510,7 @@
             const midX = x1 + (dx / 2);
             const midY = y1 + (dy / 2) - 20;
             label.style.left = `${midX}px`;
-            label.style.top = `${midY}px`;
+            label.style.top = `${midY - 15}px`;
 
             return [edge, label];
         }
@@ -648,10 +630,7 @@
                         addSelect(nextNode, level + 1);
                     } else {
                         const resultDiv = document.createElement('div');
-                        const isApprove = currentTree === thesisTree ?
-                            nextNode.includes('Успешная') :
-                            nextNode.includes('Одобрить');
-                        resultDiv.className = `result ${isApprove ? 'approve' : 'reject'}`;
+                        resultDiv.className = `result ${nextNode.includes('Одобрить') ? 'approve' : 'reject'}`;
                         resultDiv.innerHTML = `<strong>Результат: ${nextNode}</strong>`;
                         form.appendChild(resultDiv);
                     }
