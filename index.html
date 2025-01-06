@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Дерево решений</title>
+    <script src="vis-network.min.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -56,106 +57,10 @@
             width: calc(100% - 60px);
         }
 
-        .tree-container-wrapper {
-            width: 100%;
-            height: 100%;
-            overflow: auto;
-            position: relative;
-            transform-origin: 0 0;
-        }
-
         #treeContainer {
-            min-width: 1600px;
-            min-height: 1200px;
-            margin-left: -100px;
-            position: relative;
-        }
-
-        .zoom-controls {
-            position: absolute;
-            right: 20px;
-            bottom: 20px;
-            display: flex;
-            gap: 10px;
-            z-index: 1000;
-        }
-
-        .zoom-btn {
-            width: 40px;
-            height: 40px;
-            border: none;
-            border-radius: 50%;
-            background: #4CAF50;
-            color: white;
-            font-size: 20px;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-            transition: all 0.3s ease;
-        }
-
-        .edge-label {
-            position: absolute;
-            background: white;
-            padding: 5px 10px;
-            border-radius: 12px;
-            font-size: 12px;
-            border: 1px solid #4CAF50;
-            color: #4CAF50;
-            white-space: nowrap;
-            z-index: 3;
-            transition: opacity 0.3s ease;
-            transform: translate(-50%, -50%);
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-
-        .node {
-            position: absolute;
-            padding: 15px;
-            width: 140px;
-            text-align: center;
-            border-radius: 8px;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-            border: 2px solid #4CAF50;
+            width: 100%;
+            height: 800px;
             background: #fff;
-            transition: opacity 0.3s ease;
-            z-index: 2;
-        }
-
-        .edge {
-            position: absolute;
-            height: 2px;
-            background: #4CAF50;
-            transform-origin: 0 50%;
-            transition: opacity 0.3s ease;
-            z-index: 1;
-        }
-
-        .edge::after {
-            content: '';
-            position: absolute;
-            right: -1px;
-            top: -4px;
-            width: 0;
-            height: 0;
-            border-left: 8px solid #4CAF50;
-            border-top: 5px solid transparent;
-            border-bottom: 5px solid transparent;
-            transform: translateX(1px);
-        }
-
-        .field-name {
-            font-size: 12px;
-            color: #666;
-            margin-bottom: 5px;
-        }
-
-        .field-value {
-            font-weight: bold;
-            color: #333;
-            font-size: 14px;
         }
 
         select {
@@ -225,24 +130,12 @@
             </div>
         </div>
         <div class="visualization">
-            <div class="tree-container-wrapper">
-                <div id="treeContainer"></div>
-            </div>
-            <div class="zoom-controls">
-                <button class="zoom-btn" onclick="zoomOut()">−</button>
-                <div class="zoom-level">100%</div>
-                <button class="zoom-btn" onclick="zoomIn()">+</button>
-            </div>
+            <div id="treeContainer"></div>
         </div>
     </div>
 
     <script>
-        let nodesAtLevel = new Map();
-        let currentScale = 1;
-        const MIN_SCALE = 0.1;
-        const MAX_SCALE = 2;
-        const SCALE_STEP = 0.1;
-
+        let network;
         const thesisTree = {
             name: "Качество работы",
             options: ["Высокое", "Среднее", "Низкое"],
@@ -347,248 +240,186 @@
 
         let currentTree = thesisTree;
 
-        function switchTree() {
-            const selectedTree = document.getElementById('treeSelect').value;
-            currentTree = trees[selectedTree];
-            renderTree();
-            initializeSelects();
-        }
+        function prepareVisData(tree) {
+            const nodes = new vis.DataSet();
+            const edges = new vis.DataSet();
+            let id = 0;
+            const nodeMap = new Map(); // Карта для хранения связи путей и ID
 
-
-        function updateScale() {
-            const wrapper = document.querySelector('.tree-container-wrapper');
-            wrapper.style.transform = `scale(${currentScale})`;
-            document.querySelector('.zoom-level').textContent = `${Math.round(currentScale * 100)}%`;
-        }
-
-        function zoomIn() {
-            if (currentScale < MAX_SCALE) {
-                currentScale = Math.min(currentScale + SCALE_STEP, MAX_SCALE);
-                updateScale();
-            }
-        }
-
-        function zoomOut() {
-            if (currentScale > MIN_SCALE) {
-                currentScale = Math.max(currentScale - SCALE_STEP, MIN_SCALE);
-                updateScale();
-            }
-        }
-
-        function handleWheel(e) {
-            if (e.ctrlKey) {
-                e.preventDefault();
-                if (e.deltaY < 0) {
-                    zoomIn();
-                } else {
-                    zoomOut();
-                }
-            }
-        }
-
-        function createNode(fieldName, value, x, y) {
-            const node = document.createElement('div');
-            node.className = 'node';
-            node.innerHTML = `
-                <div class="field-name">${fieldName}</div>
-                <div class="field-value">${value || ''}</div>
-            `;
-            node.style.left = x + 'px';
-            node.style.top = y + 'px';
-            return node;
-        }
-
-        function calculateNodePositions(tree = currentTree) {
-            const nodes = [];
-            const edges = [];
-            const containerWidth = Math.max(document.getElementById('treeContainer').offsetWidth, 2000);
-            const levelHeight = 200;
-            const baseNodeWidth = 200;
-
-            function getMaxWidthAtLevel(node, level = 0, widths = {}) {
-                if (typeof node !== 'object') return widths;
-                widths[level] = (widths[level] || 0) + 1;
-                if (node.next) {
-                    Object.values(node.next).forEach(nextNode => {
-                        getMaxWidthAtLevel(nextNode, level + 1, widths);
-                    });
-                }
-                return widths;
-            }
-
-            const levelWidths = getMaxWidthAtLevel(tree);
-            nodesAtLevel.clear();
-
-            function traverse(node, level = 0, parentX = null, parentY = null, parentValue = null, path = []) {
-                if (!nodesAtLevel.has(level)) {
-                    nodesAtLevel.set(level, 0);
-                }
-                const currentIndex = nodesAtLevel.get(level);
-                nodesAtLevel.set(level, currentIndex + 1);
-
-                const totalNodesAtLevel = levelWidths[level] || 1;
-                const levelWidth = baseNodeWidth * (totalNodesAtLevel - 1);
-                const startX = 100;
-
-                let x = startX + (currentIndex * baseNodeWidth);
-                let y = 50 + (level * levelHeight);
-
+            function traverse(node, parentId = null, edgeLabel = '', path = []) {
+                const currentId = id++;
                 const currentPath = [...path];
-                if (parentValue) currentPath.push(parentValue);
+                if (edgeLabel) currentPath.push(edgeLabel);
 
-                if (typeof node === 'object') {
-                    nodes.push({
-                        x: x,
-                        y: y,
-                        name: node.name,
-                        level: level,
-                        value: '',
-                        path: currentPath.join('|')
-                    });
+                const isLeaf = typeof node === 'string';
+                const nodeLabel = isLeaf ? node : node.name;
 
-                    if (parentX !== null && parentY !== null) {
-                        edges.push({
-                            x1: parentX + 70,
-                            y1: parentY + 30,
-                            x2: x + 70,
-                            y2: y,
-                            label: parentValue,
-                            path: currentPath.join('|')
-                        });
+                nodes.add({
+                    id: currentId,
+                    label: nodeLabel,
+                    path: currentPath.join('|'),
+                    level: parentId === null ? 0 : nodes.get(parentId).level + 1,
+                    color: {
+                        background: isLeaf ?
+                            (node.includes('Одобрить') || node.includes('Успешная') ? '#E8F5E9' : '#FFEBEE') :
+                            '#fff',
+                        border: isLeaf ?
+                            (node.includes('Одобрить') || node.includes('Успешная') ? '#2E7D32' : '#C62828') :
+                            '#4CAF50'
                     }
+                });
 
-                    node.options.forEach((option, i) => {
-                        const nextNode = node.next[option];
-                        traverse(nextNode, level + 1, x, y, option, currentPath);
-                    });
-                } else {
-                    const uniqueIndex = `${level}-${currentPath.join('|')}`;
-                    nodes.push({
-                        x: x,
-                        y: y,
-                        name: 'Решение',
-                        value: node,
-                        level: level,
-                        path: currentPath.join('|'),
-                        uniqueKey: uniqueIndex
-                    });
+                nodeMap.set(currentPath.join('|'), currentId);
 
-                    if (parentX !== null && parentY !== null) {
-                        edges.push({
-                            x1: parentX + 70,
-                            y1: parentY + 30,
-                            x2: x + 70,
-                            y2: y,
-                            label: parentValue,
-                            path: currentPath.join('|')
-                        });
-                    }
+                if (parentId !== null) {
+                    edges.add({
+                        from: parentId,
+                        to: currentId,
+                        label: edgeLabel,
+                        color: '#4CAF50',
+                        arrows: 'to'
+                    });
+                }
+
+                if (typeof node === 'object' && node.next) {
+                    Object.entries(node.next).forEach(([option, nextNode]) => {
+                        traverse(nextNode, currentId, option, currentPath);
+                    });
                 }
             }
 
             traverse(tree);
-            return { nodes, edges };
-        }
-
-        function createEdge(x1, y1, x2, y2, text) {
-            const dx = x2 - x1;
-            const dy = y2 - y1;
-            const length = Math.sqrt(dx * dx + dy * dy);
-            const angle = Math.atan2(dy, dx);
-
-            const edge = document.createElement('div');
-            edge.className = 'edge';
-            edge.style.width = `${length}px`;
-            edge.style.left = `${x1}px`;
-            edge.style.top = `${y1}px`;
-            edge.style.transform = `rotate(${angle}rad)`;
-
-            const label = document.createElement('div');
-            label.className = 'edge-label';
-            label.textContent = text;
-
-            const midX = x1 + (dx / 2);
-            const midY = y1 + (dy / 2) - 20;
-            label.style.left = `${midX}px`;
-            label.style.top = `${midY - 15}px`;
-
-            return [edge, label];
+            return { nodes, edges, nodeMap };
         }
 
         function renderTree() {
             const container = document.getElementById('treeContainer');
-            container.innerHTML = '';
-            nodesAtLevel.clear();
+            const { nodes, edges, nodeMap } = prepareVisData(currentTree); // Сохраняем nodeMap
 
-            const { nodes, edges } = calculateNodePositions(currentTree);
+            const options = {
+                nodes: {
+                    shape: 'box',
+                    margin: {
+                        top: 10,
+                        right: 10,
+                        bottom: 10,
+                        left: 10
+                    },
+                    font: {
+                        size: 14,
+                        color: '#333'
+                    },
+                    borderWidth: 2,
+                    shadow: {
+                        enabled: true,
+                        color: 'rgba(0,0,0,0.2)',
+                        size: 4,
+                        x: 2,
+                        y: 2
+                    }
+                },
+                edges: {
+                    font: {
+                        size: 12,
+                        color: '#4CAF50',
+                        background: '#fff',
+                        strokeWidth: 0
+                    },
+                    shadow: {
+                        enabled: true,
+                        color: 'rgba(0,0,0,0.2)',
+                        size: 4,
+                        x: 2,
+                        y: 2
+                    },
+                    smooth: {
+                        type: 'cubicBezier',
+                        roundness: 0.5
+                    }
+                },
+                layout: {
+                    hierarchical: {
+                        direction: 'UD',
+                        sortMethod: 'directed',
+                        nodeSpacing: 250,    // было 150
+                        levelSeparation: 200 // было 150
+                    }
+                },
+                physics: false,
+                interaction: {
+                    dragNodes: false,
+                    dragView: true,
+                    zoomView: true,
+                    hover: true
+                }
+            };
 
-            edges.forEach(edge => {
-                const [edgeElement, labelElement] = createEdge(
-                    edge.x1,
-                    edge.y1,
-                    edge.x2,
-                    edge.y2,
-                    edge.label
-                );
-                edgeElement.style.opacity = '0.3';
-                labelElement.style.opacity = '0.3';
-                edgeElement.dataset.path = edge.path;
-                container.appendChild(edgeElement);
-                container.appendChild(labelElement);
-            });
+            if (network) {
+                network.destroy();
+            }
 
-            nodes.forEach(node => {
-                const nodeElement = createNode(node.name, node.value, node.x, node.y);
-                nodeElement.style.opacity = '0.3';
-                nodeElement.dataset.level = node.level;
-                nodeElement.dataset.path = node.path;
-                container.appendChild(nodeElement);
+            network = new vis.Network(container, { nodes, edges }, options);
+            network.nodeMap = nodeMap;
+
+            network.on("selectNode", function (params) {
+                const nodeId = params.nodes[0];
+                highlightPathToNode(nodeId);
             });
         }
 
-        function highlightPath(selectedOptions) {
-            const nodes = document.querySelectorAll('.node');
-            const edges = document.querySelectorAll('.edge');
-            const labels = document.querySelectorAll('.edge-label');
+        function highlightPathToNode(nodeId) {
+            const nodes = network.body.data.nodes;
+            const edges = network.body.data.edges;
 
-            nodes.forEach(node => node.style.opacity = '0.3');
-            edges.forEach(edge => edge.style.opacity = '0.3');
-            labels.forEach(label => label.style.opacity = '0.3');
-
-            const selectedPath = selectedOptions.join('|');
-
-            nodes.forEach(node => {
-                const nodePath = node.dataset.path || '';
-                if (selectedPath.startsWith(nodePath) || nodePath === selectedPath) {
-                    node.style.opacity = '1';
-                }
-            });
-
-            selectedOptions.forEach((option, index) => {
-                const partialPath = selectedOptions.slice(0, index + 1).join('|');
-                const edge = Array.from(edges).find((e, i) => {
-                    const label = labels[i];
-                    return label.textContent === option && edges[i].dataset.path === partialPath;
+            nodes.get().forEach(node => {
+                nodes.update({
+                    id: node.id,
+                    opacity: 0.15
                 });
-
-                if (edge) {
-                    const edgeIndex = Array.from(edges).indexOf(edge);
-                    edge.style.opacity = '1';
-                    labels[edgeIndex].style.opacity = '1';
-                }
             });
-        }
 
-        function findNextNode(path) {
-            let node = currentTree;
-            for (const option of path) {
-                if (typeof node.next[option] === 'object') {
-                    node = node.next[option];
+            edges.get().forEach(edge => {
+                edges.update({
+                    id: edge.id,
+                    opacity: 0.15
+                });
+            });
+
+            const path = [];
+            let currentNode = nodeId;
+
+            // Продолжаем искать путь даже для листовых узлов
+            while (currentNode !== undefined) {
+                path.unshift(currentNode);
+                const incomingEdges = edges.get().filter(e => e.to === currentNode);
+                if (incomingEdges.length > 0) {
+                    path.unshift(incomingEdges[0].id);
+                    currentNode = incomingEdges[0].from;
                 } else {
-                    return node.next[option];
+                    break;
                 }
             }
-            return node;
+
+            path.forEach(elementId => {
+                if (nodes.get(elementId)) {
+                    nodes.update({
+                        id: elementId,
+                        opacity: 1,
+                        color: {
+                            background: '#E8F5E9',
+                            border: '#2E7D32',
+                        },
+                        borderWidth: 3
+                    });
+                } else if (edges.get(elementId)) {
+                    edges.update({
+                        id: elementId,
+                        opacity: 1,
+                        color: '#2E7D32',
+                        width: 3
+                    });
+                }
+            });
         }
 
         function initializeSelects() {
@@ -603,12 +434,13 @@
 
                 const select = document.createElement('select');
                 select.innerHTML = `
-                    <option value="">Выберите ${node.name.toLowerCase()}</option>
-                    ${node.options.map(opt => `<option value="${opt}">${opt}</option>`).join('')}
-                `;
+                   <option value="">Выберите ${node.name.toLowerCase()}</option>
+                   ${node.options.map(opt => `<option value="${opt}">${opt}</option>`).join('')}
+               `;
 
                 select.onchange = (e) => {
                     const selectedValue = e.target.value;
+                    select.disabled = true;
                     if (!selectedValue) return;
 
                     const selects = form.querySelectorAll('select');
@@ -619,21 +451,26 @@
                     const prevResult = form.querySelector('.result');
                     if (prevResult) prevResult.remove();
 
-                    const selectedOptions = Array.from(form.querySelectorAll('select'))
-                        .map(s => s.value)
-                        .filter(v => v !== '');
-
-                    highlightPath(selectedOptions);
-
                     const nextNode = node.next[selectedValue];
                     if (typeof nextNode === 'object') {
                         addSelect(nextNode, level + 1);
                     } else {
                         const resultDiv = document.createElement('div');
-                        resultDiv.className = `result ${nextNode.includes('Одобрить') ? 'approve' : 'reject'}`;
-                        resultDiv.innerHTML = `<strong>Результат: ${nextNode}</strong>`;
+                        resultDiv.className = `result ${nextNode.includes('Одобрить') || nextNode.includes('Успешная') ? 'approve' : 'reject'} `;
+                        resultDiv.innerHTML = `Результат: ${nextNode}`;
                         form.appendChild(resultDiv);
                     }
+
+                    const selectedOptions = Array.from(form.querySelectorAll('select'))
+                        .map(s => s.value)
+                        .filter(v => v !== '');
+
+                    const path = selectedOptions.join('|');
+                    const nodeId = network.nodeMap.get(path);
+                    if (nodeId) {
+                        highlightPathToNode(nodeId);
+                    }
+
                 };
 
                 form.appendChild(label);
@@ -643,23 +480,16 @@
             addSelect(currentNode, 0);
         }
 
+        function switchTree() {
+            const selectedTree = document.getElementById('treeSelect').value;
+            currentTree = trees[selectedTree];
+            renderTree();
+            initializeSelects();
+        }
+
         window.onload = () => {
             renderTree();
             initializeSelects();
-
-            document.querySelector('.visualization').addEventListener('wheel', handleWheel, { passive: false });
-
-            document.addEventListener('keydown', (e) => {
-                if (e.ctrlKey) {
-                    if (e.key === '=' || e.key === '+') {
-                        e.preventDefault();
-                        zoomIn();
-                    } else if (e.key === '-') {
-                        e.preventDefault();
-                        zoomOut();
-                    }
-                }
-            });
         };
     </script>
 </body>
